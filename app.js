@@ -11,6 +11,7 @@ app.use(express.json());
 const mongoose = require("mongoose");
 const User = require("./models/user");
 const Session = require("./models/session");
+const Session = require("./models/session");
 
 // Generate JWT token
 function generateToken(user) {
@@ -36,6 +37,7 @@ function authenticate(req, res, next) {
     next();
   });
 }
+
 app.post("/signup/student", async (req, res) => {
   const { universityID, password } = req.body;
   console.log(req.body);
@@ -92,12 +94,87 @@ app.post("/login/student", async (req, res) => {
   res.json({ token });
 });
 
-const port = 3000;
+app.get("/sessions", authenticate, async (req, res) => {
+  const { user } = req;
+  const today = moment().startOf("isoWeek").add(3, "days").format("YYYY-MM-DD");
+  const startTime = moment(`${today}T10:00:00Z`);
+  const endTime = moment(`${today}T11:00:00Z`);
+
+  const sessions = await Session.find({
+    startTime: { $gte: startTime.toDate(), $lt: endTime.toDate() },
+    dean: null,
+    booked: false,
+  });
+
+  res.json({ sessions });
+});
+app.post("/sessions/book", authenticate, async (req, res) => {
+  const { user } = req;
+  const { sessionId } = req.body;
+
+  const session = await Session.findById(sessionId);
+  if (!session || session.booked) {
+    return res.status(400).json({ message: "Invalid session" });
+  }
+
+  session.student = user.universityID;
+  session.booked = true;
+  await session.save();
+
+  res.json({ message: "Session booked successfully" });
+});
+
+app.post("/login/dean", async (req, res) => {
+  const { universityID, password } = req.body;
+
+  // Check if user exists
+  const user = await User.findOne({ universityID });
+  if (!user) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  // Check password
+  const passwordMatch = await bcrypt.compare(password, user.password);
+  if (!passwordMatch) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  // Generate token
+  const token = generateToken(user);
+
+  res.json({ token });
+});
+
+app.get("/sessions/pending", authenticate, async (req, res) => {
+  const { user } = req;
+
+  const sessions = await Session.find({
+    dean: user.universityID,
+    booked: true,
+    startTime: { $gte: new Date() },
+  });
+
+  res.json({ sessions });
+});
+
+app.put("/sessions/:sessionId", async (req, res) => {
+  const { sessionId } = req.params;
+  const { startTime } = req.body;
+
+  const session = await Session.findById(sessionId);
+  if (!session) {
+    return res.status(400).json({ message: "Invalid session" });
+  }
+
+  session.startTime = startTime;
+  await session.save();
+
+  res.json({ message: "Session time updated successfully" });
+});
+const port = process.env.PORT;
 const start = async () => {
   try {
-    await connectDB(
-      "mongodb+srv://varshney:Sj55888@cluster0.jqzobx2.mongodb.net/)backend?retryWrites=true&w=majority"
-    );
+    await connectDB(process.env.MONGO_URI);
     app.listen(port, () => {
       console.log(`server is listenning on ${port}`);
     });
