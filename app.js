@@ -94,6 +94,27 @@ app.post("/login/student", async (req, res) => {
   res.json({ token });
 });
 
+app.post("/sessions/create", authenticate, async (req, res) => {
+  const { user } = req;
+  const { startTime } = req.body;
+
+  // Check if the dean is authenticated
+  if (user.role !== "dean") {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // Create a new session
+  const session = new Session({
+    dean: user.universityID,
+    startTime: moment(startTime).toDate(),
+    booked: false,
+  });
+
+  await session.save();
+
+  res.json({ message: "Session created successfully" });
+});
+
 app.get("/sessions", authenticate, async (req, res) => {
   const { user } = req;
   const today = moment().startOf("isoWeek").add(3, "days").format("YYYY-MM-DD");
@@ -108,6 +129,7 @@ app.get("/sessions", authenticate, async (req, res) => {
 
   res.json({ sessions });
 });
+
 app.post("/sessions/book", authenticate, async (req, res) => {
   const { user } = req;
   const { sessionId } = req.body;
